@@ -82,4 +82,3 @@ impl Slot {
         time_match && type_match
     }
 }
-

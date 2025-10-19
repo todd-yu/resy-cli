@@ -9,6 +9,9 @@ A clean, fast Rust implementation of the Resy booking CLI.
 - 🎯 Filter by reservation times and table types
 - 🏃 Dry run mode for testing
 - ✨ Beautiful CLI output with emojis
+- 🏆 **Competitive Mode**: Polling, concurrent threads, retries (see [COMPETITIVE_MODE.md](COMPETITIVE_MODE.md))
+- ⚡ **Low Latency**: HTTP/2, connection pooling, TCP_NODELAY optimizations
+- 🔁 **Lock-Free**: Atomic operations for zero-overhead thread coordination
 
 ## Setup
 
@@ -70,6 +73,24 @@ After building with `cargo build --release`, you can run:
 ```bash
 ./target/release/resy-rust book --venue-id 12345 --party-size 2 --date 2025-10-25 --times "18:00:00"
 ```
+
+### Competitive Mode (Recommended for Popular Restaurants)
+
+For hard-to-get reservations, use competitive mode with polling and concurrent threads:
+
+```bash
+./target/release/resy-rust book \
+  --venue-id 12345 \
+  --party-size 2 \
+  --date 2025-10-25 \
+  --times "18:00:00,18:30:00" \
+  --threads 5 \
+  --retries 3 \
+  --poll-interval-ms 250 \
+  --poll-timeout-secs 30
+```
+
+**See [COMPETITIVE_MODE.md](COMPETITIVE_MODE.md) for full documentation and best practices.**
 
 ## Project Structure
 

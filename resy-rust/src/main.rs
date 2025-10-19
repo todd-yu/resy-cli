@@ -4,6 +4,7 @@ mod types;
 use anyhow::{Context, Result};
 use clap::Parser;
 use std::env;
+use std::time::Duration;
 
 use api::ResyClient;
 
@@ -42,6 +43,22 @@ enum Commands {
         /// Dry run mode - fetch slots but don't book
         #[arg(long, default_value = "false")]
         dry_run: bool,
+
+        /// Number of concurrent booking threads (default: 1, recommended: 3-5)
+        #[arg(long, default_value = "1")]
+        threads: usize,
+
+        /// Number of retry attempts per thread (default: 3)
+        #[arg(long, default_value = "3")]
+        retries: usize,
+
+        /// Poll interval in milliseconds when waiting for slots (default: 250ms)
+        #[arg(long, default_value = "250")]
+        poll_interval_ms: u64,
+
+        /// Maximum time to poll for slots in seconds (default: 30s)
+        #[arg(long, default_value = "30")]
+        poll_timeout_secs: u64,
     },
 }
 
@@ -66,6 +83,10 @@ async fn main() -> Result<()> {
             times,
             types,
             dry_run,
+            threads,
+            retries,
+            poll_interval_ms,
+            poll_timeout_secs,
         } => {
             let types = types.unwrap_or_default();
             
@@ -79,10 +100,27 @@ async fn main() -> Result<()> {
             if !types.is_empty() {
                 println!("   Types: {}", types.join(", "));
             }
+            if threads > 1 {
+                println!("   Concurrent Threads: {}", threads);
+            }
+            if retries > 1 {
+                println!("   Retries per Thread: {}", retries);
+            }
             println!();
 
             client
-                .book(&venue_id, party_size, &date, &times, &types, dry_run)
+                .book_competitive(
+                    &venue_id,
+                    party_size,
+                    &date,
+                    &times,
+                    &types,
+                    dry_run,
+                    threads,
+                    retries,
+                    Duration::from_millis(poll_interval_ms),
+                    Duration::from_secs(poll_timeout_secs),
+                )
                 .await?;
         }
     }

@@ -2,6 +2,10 @@ use anyhow::{Context, Result};
 use reqwest::{Client, header};
 use serde_json::json;
 use urlencoding::encode;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::time::{Duration, Instant};
+use tokio::time::sleep;
 
 use crate::types::*;
 
@@ -24,9 +28,15 @@ impl ResyClient {
         headers.insert("x-origin", "https://resy.com".parse()?);
         headers.insert("cache-control", "no-cache".parse()?);
 
+        // Optimize for low latency: connection pooling, HTTP/2, shorter timeout
         let client = Client::builder()
             .default_headers(headers)
-            .timeout(std::time::Duration::from_secs(3))
+            .pool_max_idle_per_host(10)
+            .pool_idle_timeout(Duration::from_secs(90))
+            .http2_prior_knowledge()
+            .tcp_nodelay(true)
+            .timeout(Duration::from_secs(2))
+            .connect_timeout(Duration::from_millis(500))
             .build()?;
 
         Ok(Self {
@@ -212,6 +222,188 @@ impl ResyClient {
             .map(|method| method.id);
 
         self.book_reservation(&details.book_token.value, payment_id).await
+    }
+
+    /// Poll for available slots with configurable interval and timeout
+    async fn poll_for_slots(
+        &self,
+        venue_id: &str,
+        party_size: u32,
+        day: &str,
+        times: &[String],
+        types: &[String],
+        poll_interval: Duration,
+        poll_timeout: Duration,
+    ) -> Result<Vec<Slot>> {
+        let start = Instant::now();
+        let mut attempt = 0;
+
+        loop {
+            attempt += 1;
+            
+            // Try to fetch slots
+            match self.fetch_slots(venue_id, party_size, day).await {
+                Ok(slots) => {
+                    let matching: Vec<_> = slots
+                        .into_iter()
+                        .filter(|slot| slot.matches(times, types))
+                        .collect();
+                    
+                    if !matching.is_empty() {
+                        println!("✅ Found {} matching slots after {} attempts ({:.2}s)", 
+                            matching.len(), attempt, start.elapsed().as_secs_f64());
+                        return Ok(matching);
+                    }
+                }
+                Err(e) => {
+                    // Continue polling even on errors (restaurant might not have released slots yet)
+                    if attempt == 1 {
+                        println!("⏳ Polling for slots... ({})", e);
+                    }
+                }
+            }
+
+            // Check timeout
+            if start.elapsed() >= poll_timeout {
+                anyhow::bail!(
+                    "❌ No matching slots found after {:.1}s of polling ({} attempts)", 
+                    poll_timeout.as_secs_f64(), 
+                    attempt
+                );
+            }
+
+            // Show progress every 5 seconds
+            if attempt > 1 && start.elapsed().as_secs() % 5 == 0 && start.elapsed().as_millis() % 1000 < poll_interval.as_millis() {
+                println!("⏳ Still polling... ({:.1}s elapsed, {} attempts)", 
+                    start.elapsed().as_secs_f64(), attempt);
+            }
+
+            sleep(poll_interval).await;
+        }
+    }
+
+    /// Competitive booking with concurrent threads and retries
+    pub async fn book_competitive(
+        &self,
+        venue_id: &str,
+        party_size: u32,
+        day: &str,
+        times: &[String],
+        types: &[String],
+        dry_run: bool,
+        num_threads: usize,
+        num_retries: usize,
+        poll_interval: Duration,
+        poll_timeout: Duration,
+    ) -> Result<()> {
+        println!("📍 Fetching venue details...");
+        let venue = self.fetch_venue_details(venue_id).await?;
+        println!("🍽️  Restaurant: {}", venue.venue.name);
+
+        println!("\n🔍 Polling for available slots...");
+        println!("   Poll interval: {}ms", poll_interval.as_millis());
+        println!("   Poll timeout: {}s", poll_timeout.as_secs());
+        
+        let matching_slots = self.poll_for_slots(
+            venue_id,
+            party_size,
+            day,
+            times,
+            types,
+            poll_interval,
+            poll_timeout,
+        ).await?;
+
+        println!("\n🎯 Available matching slots:");
+        for slot in &matching_slots {
+            println!("   - {} ({})", slot.date.start, slot.config.slot_type);
+        }
+
+        if dry_run {
+            println!("\n🏃 Dry run mode - skipping actual booking");
+            return Ok(());
+        }
+
+        // Lock-free coordination using atomics
+        let success = Arc::new(AtomicBool::new(false));
+        let attempts = Arc::new(AtomicUsize::new(0));
+        
+        println!("\n🚀 Launching {} concurrent booking threads...", num_threads);
+        
+        let mut handles = Vec::new();
+
+        // Spawn multiple concurrent tasks for booking attempts
+        for thread_id in 0..num_threads {
+            let slot = matching_slots[0].clone(); // Try the first matching slot
+            let day = day.to_string();
+            let success = Arc::clone(&success);
+            let attempts = Arc::clone(&attempts);
+            
+            // Clone client data for each thread
+            let api_key = self.api_key.clone();
+            let auth_token = self.auth_token.clone();
+
+            let handle = tokio::spawn(async move {
+                // Each thread creates its own client for true concurrency
+                let client = match ResyClient::new(api_key, auth_token) {
+                    Ok(c) => c,
+                    Err(e) => {
+                        eprintln!("   Thread {}: Failed to create client: {}", thread_id, e);
+                        return;
+                    }
+                };
+
+                for retry in 0..num_retries {
+                    // Check if another thread already succeeded
+                    if success.load(Ordering::Relaxed) {
+                        return;
+                    }
+
+                    attempts.fetch_add(1, Ordering::Relaxed);
+                    
+                    match client.try_book_slot(&slot, &day, party_size).await {
+                        Ok(_) => {
+                            // Mark success atomically
+                            if !success.swap(true, Ordering::SeqCst) {
+                                println!("   ✅ Thread {} succeeded on attempt {}", thread_id, retry + 1);
+                            }
+                            return;
+                        }
+                        Err(e) => {
+                            if retry == 0 || retry == num_retries - 1 {
+                                println!("   ⚠️  Thread {} attempt {}/{}: {}", 
+                                    thread_id, retry + 1, num_retries, e);
+                            }
+                            // Small delay before retry (exponential backoff)
+                            if retry < num_retries - 1 {
+                                sleep(Duration::from_millis(50 * (retry as u64 + 1))).await;
+                            }
+                        }
+                    }
+                }
+            });
+
+            handles.push(handle);
+        }
+
+        // Wait for all threads to complete
+        for handle in handles {
+            let _ = handle.await;
+        }
+
+        let total_attempts = attempts.load(Ordering::Relaxed);
+        
+        if success.load(Ordering::Relaxed) {
+            println!("\n🎉 Successfully booked reservation!");
+            println!("   Total attempts: {}", total_attempts);
+            Ok(())
+        } else {
+            anyhow::bail!(
+                "❌ Failed to book after {} total attempts across {} threads",
+                total_attempts,
+                num_threads
+            )
+        }
     }
 }
 
