@@ -34,6 +34,7 @@ impl ResyClient {
             .default_headers(headers)
             .pool_max_idle_per_host(10)
             .pool_idle_timeout(Duration::from_secs(90))
+            .http1_only()  // Force HTTP/1.1 to avoid HTTP/2 issues with WAF
             .tcp_nodelay(true)
             .timeout(Duration::from_secs(2))
             .connect_timeout(Duration::from_millis(500))
