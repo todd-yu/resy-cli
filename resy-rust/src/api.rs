@@ -60,6 +60,10 @@ impl ResyClient {
     pub async fn fetch_venue_details(&self, venue_id: &str) -> Result<VenueResponse> {
         let url = format!("https://api.resy.com/2/config?venue_id={}", venue_id);
         
+        eprintln!("DEBUG: Fetching venue details from: {}", url);
+        eprintln!("DEBUG: API Key (first 20 chars): {}...", &self.api_key.chars().take(20).collect::<String>());
+        eprintln!("DEBUG: Auth Token (first 20 chars): {}...", &self.auth_token.chars().take(20).collect::<String>());
+        
         let response = self.client
             .get(&url)
             .headers(self.auth_headers())
@@ -67,8 +71,13 @@ impl ResyClient {
             .await
             .context("Failed to fetch venue details")?;
 
-        if !response.status().is_success() {
-            anyhow::bail!("Failed to fetch venue details: {}", response.status());
+        let status = response.status();
+        eprintln!("DEBUG: Response status: {}", status);
+        
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_else(|_| "Could not read response body".to_string());
+            eprintln!("DEBUG: Error response body: {}", body);
+            anyhow::bail!("Failed to fetch venue details: {} - Body: {}", status, body);
         }
 
         response.json().await.context("Failed to parse venue response")
@@ -85,6 +94,8 @@ impl ResyClient {
             party_size, venue_id, day
         );
 
+        eprintln!("DEBUG: Fetching slots from: {}", url);
+
         let response = self.client
             .get(&url)
             .headers(self.auth_headers())
@@ -92,8 +103,22 @@ impl ResyClient {
             .await
             .context("Failed to fetch slots")?;
 
-        if !response.status().is_success() {
-            anyhow::bail!("Failed to fetch slots: {}", response.status());
+        let status = response.status();
+        eprintln!("DEBUG: Slots response status: {}", status);
+
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_else(|_| "Could not read response body".to_string());
+            eprintln!("DEBUG: Error response body: {}", body);
+            eprintln!("DEBUG: Headers sent:");
+            let headers = self.auth_headers();
+            for (key, value) in headers.iter() {
+                if key == "authorization" {
+                    eprintln!("  {}: ResyAPI api_key=\"{}...\"", key, &self.api_key.chars().take(20).collect::<String>());
+                } else {
+                    eprintln!("  {}: {:?}", key, value);
+                }
+            }
+            anyhow::bail!("Failed to fetch slots: {} - Body: {}", status, body);
         }
 
         let find_response: FindResponse = response.json().await.context("Failed to parse slots response")?;
@@ -118,6 +143,8 @@ impl ResyClient {
             party_size,
         };
 
+        eprintln!("DEBUG: Getting booking token from: {}", url);
+
         let response = self.client
             .post(url)
             .headers(self.auth_headers())
@@ -126,8 +153,13 @@ impl ResyClient {
             .await
             .context("Failed to get booking token")?;
 
-        if !response.status().is_success() {
-            anyhow::bail!("Failed to get booking token: {}", response.status());
+        let status = response.status();
+        eprintln!("DEBUG: Booking token response status: {}", status);
+
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_else(|_| "Could not read response body".to_string());
+            eprintln!("DEBUG: Error response body: {}", body);
+            anyhow::bail!("Failed to get booking token: {} - Body: {}", status, body);
         }
 
         response.json().await.context("Failed to parse booking details")
@@ -143,6 +175,8 @@ impl ResyClient {
             form_data.push_str(&format!("&struct_payment_method={}", encode(&payment_json)));
         }
 
+        eprintln!("DEBUG: Booking reservation at: {}", url);
+
         let response = self.client
             .post(url)
             .headers(self.auth_headers())
@@ -152,8 +186,13 @@ impl ResyClient {
             .await
             .context("Failed to book reservation")?;
 
-        if !response.status().is_success() {
-            anyhow::bail!("Failed to book reservation: {}", response.status());
+        let status = response.status();
+        eprintln!("DEBUG: Book response status: {}", status);
+
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_else(|_| "Could not read response body".to_string());
+            eprintln!("DEBUG: Error response body: {}", body);
+            anyhow::bail!("Failed to book reservation: {} - Body: {}", status, body);
         }
 
         Ok(())
