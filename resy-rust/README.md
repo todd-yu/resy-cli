@@ -9,8 +9,9 @@ A clean, fast Rust implementation of the Resy booking CLI.
 - 🎯 Filter by reservation times and table types
 - 🏃 Dry run mode for testing
 - ✨ Beautiful CLI output with emojis
+- 📝 **Automatic Logging**: All bookings logged to file with timestamps
 - 🏆 **Competitive Mode**: Polling, concurrent threads, retries (see [COMPETITIVE_MODE.md](COMPETITIVE_MODE.md))
-- ⚡ **Low Latency**: HTTP/2, connection pooling, TCP_NODELAY optimizations
+- ⚡ **Low Latency**: Connection pooling, TCP_NODELAY, fast timeouts
 - 🔁 **Lock-Free**: Atomic operations for zero-overhead thread coordination
 
 ## Setup
@@ -92,17 +93,33 @@ For hard-to-get reservations, use competitive mode with polling and concurrent t
 
 **See [COMPETITIVE_MODE.md](COMPETITIVE_MODE.md) for full documentation and best practices.**
 
+### Custom Log File
+
+By default, logs are saved to `~/.resy-rust/logs/venue_<venue_id>_<timestamp>.log`. You can specify a custom path:
+
+```bash
+./target/release/resy-rust book \
+  --venue-id 12345 \
+  --party-size 2 \
+  --date 2025-10-25 \
+  --times "18:00:00" \
+  --log-file /path/to/my-booking.log
+```
+
 ## Project Structure
 
 ```
 resy-rust/
-├── Cargo.toml          # Dependencies and project metadata
-├── .env.example        # Example environment variables
-├── README.md           # This file
+├── Cargo.toml             # Dependencies and project metadata
+├── env.example            # Example environment variables
+├── README.md              # This file
+├── QUICKSTART.md          # Quick start guide
+├── COMPETITIVE_MODE.md    # Competitive booking guide
+├── LOGGING.md             # Logging documentation
 └── src/
-    ├── main.rs         # CLI entry point and command handling
-    ├── api.rs          # Resy API client implementation
-    └── types.rs        # Data structures and models
+    ├── main.rs            # CLI entry point, command handling, and logging
+    ├── api.rs             # Resy API client implementation
+    └── types.rs           # Data structures and models
 ```
 
 ## Dependencies

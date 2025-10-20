@@ -8,6 +8,7 @@ use std::time::{Duration, Instant};
 use tokio::time::sleep;
 
 use crate::types::*;
+use crate::LoggerHandle;
 
 pub struct ResyClient {
     client: Client,
@@ -28,12 +29,11 @@ impl ResyClient {
         headers.insert("x-origin", "https://resy.com".parse()?);
         headers.insert("cache-control", "no-cache".parse()?);
 
-        // Optimize for low latency: connection pooling, HTTP/2, shorter timeout
+        // Optimize for low latency: connection pooling, TCP optimizations, shorter timeout
         let client = Client::builder()
             .default_headers(headers)
             .pool_max_idle_per_host(10)
             .pool_idle_timeout(Duration::from_secs(90))
-            .http2_prior_knowledge()
             .tcp_nodelay(true)
             .timeout(Duration::from_secs(2))
             .connect_timeout(Duration::from_millis(500))
@@ -234,6 +234,7 @@ impl ResyClient {
         types: &[String],
         poll_interval: Duration,
         poll_timeout: Duration,
+        logger: &LoggerHandle,
     ) -> Result<Vec<Slot>> {
         let start = Instant::now();
         let mut attempt = 0;
@@ -250,15 +251,15 @@ impl ResyClient {
                         .collect();
                     
                     if !matching.is_empty() {
-                        println!("✅ Found {} matching slots after {} attempts ({:.2}s)", 
-                            matching.len(), attempt, start.elapsed().as_secs_f64());
+                        logger.log(&format!("✅ Found {} matching slots after {} attempts ({:.2}s)", 
+                            matching.len(), attempt, start.elapsed().as_secs_f64()));
                         return Ok(matching);
                     }
                 }
                 Err(e) => {
                     // Continue polling even on errors (restaurant might not have released slots yet)
                     if attempt == 1 {
-                        println!("⏳ Polling for slots... ({})", e);
+                        logger.log(&format!("⏳ Polling for slots... ({})", e));
                     }
                 }
             }
@@ -274,8 +275,8 @@ impl ResyClient {
 
             // Show progress every 5 seconds
             if attempt > 1 && start.elapsed().as_secs() % 5 == 0 && start.elapsed().as_millis() % 1000 < poll_interval.as_millis() {
-                println!("⏳ Still polling... ({:.1}s elapsed, {} attempts)", 
-                    start.elapsed().as_secs_f64(), attempt);
+                logger.log(&format!("⏳ Still polling... ({:.1}s elapsed, {} attempts)", 
+                    start.elapsed().as_secs_f64(), attempt));
             }
 
             sleep(poll_interval).await;
@@ -295,14 +296,15 @@ impl ResyClient {
         num_retries: usize,
         poll_interval: Duration,
         poll_timeout: Duration,
+        logger: LoggerHandle,
     ) -> Result<()> {
-        println!("📍 Fetching venue details...");
+        logger.log("📍 Fetching venue details...");
         let venue = self.fetch_venue_details(venue_id).await?;
-        println!("🍽️  Restaurant: {}", venue.venue.name);
+        logger.log(&format!("🍽️  Restaurant: {}", venue.venue.name));
 
-        println!("\n🔍 Polling for available slots...");
-        println!("   Poll interval: {}ms", poll_interval.as_millis());
-        println!("   Poll timeout: {}s", poll_timeout.as_secs());
+        logger.log("🔍 Polling for available slots...");
+        logger.log(&format!("   Poll interval: {}ms", poll_interval.as_millis()));
+        logger.log(&format!("   Poll timeout: {}s", poll_timeout.as_secs()));
         
         let matching_slots = self.poll_for_slots(
             venue_id,
@@ -312,15 +314,16 @@ impl ResyClient {
             types,
             poll_interval,
             poll_timeout,
+            &logger,
         ).await?;
 
-        println!("\n🎯 Available matching slots:");
+        logger.log("🎯 Available matching slots:");
         for slot in &matching_slots {
-            println!("   - {} ({})", slot.date.start, slot.config.slot_type);
+            logger.log(&format!("   - {} ({})", slot.date.start, slot.config.slot_type));
         }
 
         if dry_run {
-            println!("\n🏃 Dry run mode - skipping actual booking");
+            logger.log("🏃 Dry run mode - skipping actual booking");
             return Ok(());
         }
 
@@ -328,7 +331,7 @@ impl ResyClient {
         let success = Arc::new(AtomicBool::new(false));
         let attempts = Arc::new(AtomicUsize::new(0));
         
-        println!("\n🚀 Launching {} concurrent booking threads...", num_threads);
+        logger.log(&format!("🚀 Launching {} concurrent booking threads...", num_threads));
         
         let mut handles = Vec::new();
 
@@ -338,6 +341,7 @@ impl ResyClient {
             let day = day.to_string();
             let success = Arc::clone(&success);
             let attempts = Arc::clone(&attempts);
+            let thread_logger = logger.clone();
             
             // Clone client data for each thread
             let api_key = self.api_key.clone();
@@ -348,7 +352,7 @@ impl ResyClient {
                 let client = match ResyClient::new(api_key, auth_token) {
                     Ok(c) => c,
                     Err(e) => {
-                        eprintln!("   Thread {}: Failed to create client: {}", thread_id, e);
+                        thread_logger.log(&format!("   Thread {}: Failed to create client: {}", thread_id, e));
                         return;
                     }
                 };
@@ -365,14 +369,14 @@ impl ResyClient {
                         Ok(_) => {
                             // Mark success atomically
                             if !success.swap(true, Ordering::SeqCst) {
-                                println!("   ✅ Thread {} succeeded on attempt {}", thread_id, retry + 1);
+                                thread_logger.log(&format!("   ✅ Thread {} succeeded on attempt {}", thread_id, retry + 1));
                             }
                             return;
                         }
                         Err(e) => {
                             if retry == 0 || retry == num_retries - 1 {
-                                println!("   ⚠️  Thread {} attempt {}/{}: {}", 
-                                    thread_id, retry + 1, num_retries, e);
+                                thread_logger.log(&format!("   ⚠️  Thread {} attempt {}/{}: {}", 
+                                    thread_id, retry + 1, num_retries, e));
                             }
                             // Small delay before retry (exponential backoff)
                             if retry < num_retries - 1 {
@@ -394,8 +398,9 @@ impl ResyClient {
         let total_attempts = attempts.load(Ordering::Relaxed);
         
         if success.load(Ordering::Relaxed) {
-            println!("\n🎉 Successfully booked reservation!");
-            println!("   Total attempts: {}", total_attempts);
+            logger.log("");
+            logger.log("🎉 Successfully booked reservation!");
+            logger.log(&format!("   Total attempts: {}", total_attempts));
             Ok(())
         } else {
             anyhow::bail!(

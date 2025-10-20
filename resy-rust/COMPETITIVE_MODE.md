@@ -90,6 +90,11 @@ EOF
 - **Description**: Maximum time to poll before giving up
 - **Note**: Restaurants often release slots 1-2 minutes late
 
+### `--log-file <PATH>`
+- **Default**: `~/.resy-rust/logs/venue_<venue_id>_<timestamp>.log`
+- **Description**: Custom path for log file
+- **Note**: Logs include timestamps and capture all booking activity
+
 ## How It Works
 
 ### 1. Polling Phase
@@ -131,11 +136,11 @@ Thread 4 ─┘
 
 ### Network Optimizations
 The client is already optimized with:
-- HTTP/2 multiplexing
 - Connection pooling (10 connections per host)
-- TCP_NODELAY enabled
+- TCP_NODELAY enabled (disables Nagle's algorithm)
 - 500ms connect timeout
 - 2 second request timeout
+- 90 second pool idle timeout for connection reuse
 
 ## Performance Characteristics
 
