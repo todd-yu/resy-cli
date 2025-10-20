@@ -106,20 +106,53 @@ By default, logs are saved to `~/.resy-rust/logs/venue_<venue_id>_<timestamp>.lo
   --log-file /path/to/my-booking.log
 ```
 
+## 🚀 Cloud VM Deployment
+
+Deploy to a cloud VM for scheduled bookings:
+
+```bash
+# 1. Copy to your VM
+scp -r resy-rust user@your-vm-ip:~/
+
+# 2. Run setup script
+ssh user@your-vm-ip
+cd resy-rust
+./scripts/vm-setup.sh
+
+# 3. Schedule a booking
+./scripts/schedule.sh \
+  --time "09:00" \
+  --venue-id 58326 \
+  --times "19:00:00" \
+  --no-dry-run
+```
+
+**See [DEPLOYMENT.md](DEPLOYMENT.md) for complete guide** | **See [QUICK_REFERENCE.md](QUICK_REFERENCE.md) for commands**
+
 ## Project Structure
 
 ```
 resy-rust/
-├── Cargo.toml             # Dependencies and project metadata
-├── env.example            # Example environment variables
-├── README.md              # This file
-├── QUICKSTART.md          # Quick start guide
-├── COMPETITIVE_MODE.md    # Competitive booking guide
-├── LOGGING.md             # Logging documentation
+├── Cargo.toml                # Dependencies and project metadata
+├── env.example               # Example environment variables
+├── README.md                 # This file
+├── QUICKSTART.md             # Quick start guide
+├── COMPETITIVE_MODE.md       # Competitive booking guide
+├── LOGGING.md                # Logging documentation
+├── DEPLOYMENT.md             # ⭐ Cloud VM deployment guide
+├── TROUBLESHOOTING.md        # Fix common issues
+├── QUICK_REFERENCE.md        # Command reference card
+├── scripts/
+│   ├── vm-setup.sh           # One-time VM setup
+│   ├── run.sh                # Run with defaults
+│   ├── schedule.sh           # Schedule bookings (at/cron)
+│   ├── check-schedule.sh     # View scheduled jobs & logs
+│   ├── test-connection.sh    # Test API & credentials
+│   └── examples.sh           # Usage examples
 └── src/
-    ├── main.rs            # CLI entry point, command handling, and logging
-    ├── api.rs             # Resy API client implementation
-    └── types.rs           # Data structures and models
+    ├── main.rs               # CLI entry point, command handling, and logging
+    ├── api.rs                # Resy API client implementation
+    └── types.rs              # Data structures and models
 ```
 
 ## Dependencies
