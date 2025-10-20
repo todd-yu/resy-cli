@@ -117,15 +117,19 @@ impl ResyClient {
         if !status.is_success() {
             let body = response.text().await.unwrap_or_else(|_| "Could not read response body".to_string());
             eprintln!("DEBUG: Error response body: {}", body);
-            eprintln!("DEBUG: Headers sent:");
-            let headers = self.auth_headers();
-            for (key, value) in headers.iter() {
-                if key == "authorization" {
-                    eprintln!("  {}: ResyAPI api_key=\"{}...\"", key, &self.api_key.chars().take(20).collect::<String>());
-                } else {
-                    eprintln!("  {}: {:?}", key, value);
-                }
-            }
+            eprintln!("DEBUG: Raw credential values:");
+            eprintln!("  API Key raw: '{}'", self.api_key);
+            eprintln!("  API Key len: {}", self.api_key.len());
+            eprintln!("  Auth Token raw (first 50): '{}'", self.auth_token.chars().take(50).collect::<String>());
+            eprintln!("  Auth Token len: {}", self.auth_token.len());
+            eprintln!("  Auth Token bytes (first 20): {:?}", self.auth_token.as_bytes().iter().take(20).collect::<Vec<_>>());
+            
+            eprintln!("DEBUG: After trimming:");
+            let api_key_trimmed = self.api_key.trim().trim_matches('"').trim_matches('\'');
+            let auth_token_trimmed = self.auth_token.trim().trim_matches('"').trim_matches('\'');
+            eprintln!("  API Key trimmed: '{}'", api_key_trimmed);
+            eprintln!("  Auth Token trimmed (first 50): '{}'", auth_token_trimmed.chars().take(50).collect::<String>());
+            
             anyhow::bail!("Failed to fetch slots: {} - Body: {}", status, body);
         }
 
