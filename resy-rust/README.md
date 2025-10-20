@@ -1,190 +1,236 @@
-# Resy Rust CLI
+# Resy Booking CLI (Rust)
 
-A clean, fast Rust implementation of the Resy booking CLI.
+Fast, competitive reservation booking for Resy restaurants.
 
-## Features
+## ✨ Features
 
-- 🚀 Fast and efficient Rust implementation
-- 🔒 Secure credential management via `.env` file
-- 🎯 Filter by reservation times and table types
-- 🏃 Dry run mode for testing
-- ✨ Beautiful CLI output with emojis
-- 📝 **Automatic Logging**: All bookings logged to file with timestamps
-- 🏆 **Competitive Mode**: Polling, concurrent threads, retries (see [COMPETITIVE_MODE.md](COMPETITIVE_MODE.md))
-- ⚡ **Low Latency**: Connection pooling, TCP_NODELAY, fast timeouts
-- 🔁 **Lock-Free**: Atomic operations for zero-overhead thread coordination
+- **Blazing Fast**: Written in Rust with optimized HTTP client
+- **Competitive Mode**: Multi-threaded booking with configurable retries
+- **Smart Polling**: Automatically checks for new reservations
+- **Flexible Scheduling**: macOS launchd integration for automated bookings
+- **Clean Output**: Beautiful logging to both console and file
 
-## Setup
+## 🚀 Quick Start
 
-1. **Install Rust** (if not already installed):
-   ```bash
-   curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
-   ```
-
-2. **Create a `.env` file** with your Resy credentials:
-   ```bash
-   cp env.example .env
-   # Edit .env and add your credentials
-   ```
-
-3. **Build the project**:
-   ```bash
-   cargo build --release
-   ```
-
-## Usage
-
-### Book a reservation
+### 1. Setup
 
 ```bash
-# Basic booking - any available time
-cargo run -- book \
-  --venue-id 12345 \
-  --party-size 2 \
-  --date 2025-10-25
-
-# With specific times (comma-separated)
-cargo run -- book \
-  --venue-id 12345 \
-  --party-size 2 \
-  --date 2025-10-25 \
-  --times "18:00:00,18:30:00,19:00:00"
-
-# With specific table types
-cargo run -- book \
-  --venue-id 12345 \
-  --party-size 2 \
-  --date 2025-10-25 \
-  --times "18:00:00,18:30:00" \
-  --types "Indoor,Bar"
-
-# Dry run (don't actually book)
-cargo run -- book \
-  --venue-id 12345 \
-  --party-size 2 \
-  --date 2025-10-25 \
-  --times "18:00:00" \
-  --dry-run
-```
-
-### Run the compiled binary
-
-After building with `cargo build --release`, you can run:
-
-```bash
-./target/release/resy-rust book --venue-id 12345 --party-size 2 --date 2025-10-25 --times "18:00:00"
-```
-
-### Competitive Mode (Recommended for Popular Restaurants)
-
-For hard-to-get reservations, use competitive mode with polling and concurrent threads:
-
-```bash
-./target/release/resy-rust book \
-  --venue-id 12345 \
-  --party-size 2 \
-  --date 2025-10-25 \
-  --times "18:00:00,18:30:00" \
-  --threads 5 \
-  --retries 3 \
-  --poll-interval-ms 250 \
-  --poll-timeout-secs 30
-```
-
-**See [COMPETITIVE_MODE.md](COMPETITIVE_MODE.md) for full documentation and best practices.**
-
-### Custom Log File
-
-By default, logs are saved to `~/.resy-rust/logs/venue_<venue_id>_<timestamp>.log`. You can specify a custom path:
-
-```bash
-./target/release/resy-rust book \
-  --venue-id 12345 \
-  --party-size 2 \
-  --date 2025-10-25 \
-  --times "18:00:00" \
-  --log-file /path/to/my-booking.log
-```
-
-## 🚀 Cloud VM Deployment
-
-Deploy to a cloud VM for scheduled bookings:
-
-```bash
-# 1. Copy to your VM
-scp -r resy-rust user@your-vm-ip:~/
-
-# 2. Run setup script
-ssh user@your-vm-ip
+# Clone and build
+git clone <your-repo>
 cd resy-rust
-./scripts/vm-setup.sh
+cargo build --release
 
-# 3. Schedule a booking
-./scripts/schedule.sh \
-  --time "09:00" \
-  --venue-id 58326 \
-  --times "19:00:00" \
-  --no-dry-run
+# Create .env file with your Resy credentials
+echo "RESY_API_KEY=your_api_key_here" > .env
+echo "RESY_AUTH_TOKEN=your_auth_token_here" >> .env
 ```
 
-**See [DEPLOYMENT.md](DEPLOYMENT.md) for complete guide** | **See [QUICK_REFERENCE.md](QUICK_REFERENCE.md) for commands**
+### 2. Test
 
-## Project Structure
+```bash
+./scripts/test-laptop.sh
+```
+
+### 3. Book Now
+
+```bash
+./target/release/resy-rust book \
+  --venue-id 79633 \
+  --party-size 2 \
+  --date 2025-10-25 \
+  --times "18:00:00,19:00:00" \
+  --threads 5 \
+  --retries 5
+```
+
+### 4. Schedule for Later
+
+```bash
+# Schedule booking at 9:00 AM on Oct 25
+./scripts/schedule-macos.sh "2025-10-25 09:00:00" 79633 2 "18:00:00,19:00:00"
+
+# Keep laptop awake
+caffeinate -u -t 86400 &
+
+# Monitor logs
+tail -f logs/launchd-output.log
+```
+
+## 📖 Usage
+
+### Basic Booking
+
+```bash
+resy-rust book \
+  --venue-id <VENUE_ID> \
+  --party-size <SIZE> \
+  --date <YYYY-MM-DD> \
+  --times <HH:MM:SS,HH:MM:SS> \
+  [--types <Indoor,Outdoor>] \
+  [--dry-run]
+```
+
+### Competitive Mode (Default)
+
+```bash
+resy-rust book \
+  --venue-id 79633 \
+  --party-size 2 \
+  --date 2025-10-25 \
+  --times "18:00:00,19:00:00" \
+  --threads 5              # Concurrent booking threads
+  --retries 5              # Retries per thread
+  --poll-interval-ms 250   # Poll every 250ms
+  --poll-timeout-secs 120  # Give up after 2 minutes
+```
+
+### Options
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `--venue-id` | Restaurant venue ID | Required |
+| `--party-size` | Number of people | Required |
+| `--date` | Reservation date (YYYY-MM-DD) | Required |
+| `--times` | Preferred times (comma-separated) | Required |
+| `--types` | Seating types (Indoor, Outdoor, etc.) | Any |
+| `--threads` | Concurrent booking threads | 5 |
+| `--retries` | Retry attempts per thread | 5 |
+| `--poll-interval-ms` | Polling interval in milliseconds | 250 |
+| `--poll-timeout-secs` | Maximum polling duration in seconds | 120 |
+| `--log-file` | Custom log file path | Auto-generated |
+| `--dry-run` | Test without booking | false |
+
+## 📅 Scheduling (macOS)
+
+Schedule a booking to run at a specific time:
+
+```bash
+./scripts/schedule-macos.sh "<DATETIME>" <VENUE_ID> <PARTY_SIZE> "<TIMES>"
+```
+
+### Examples
+
+```bash
+# Book for next Friday at 7pm
+NEXT_FRIDAY=$(date -v+fri +%Y-%m-%d)
+./scripts/schedule-macos.sh "$NEXT_FRIDAY 09:00:00" 58326 4 "19:00:00"
+
+# Book 30 days in advance
+TARGET_DATE=$(date -v+30d +%Y-%m-%d)
+./scripts/schedule-macos.sh "$TARGET_DATE 09:00:00" 79633 2 "18:00:00,19:00:00"
+```
+
+### Manage Scheduled Jobs
+
+```bash
+# List jobs
+launchctl list | grep resy
+
+# View logs
+tail -f ~/code/resy-cli/resy-rust/logs/launchd-output.log
+
+# Cancel job
+launchctl unload ~/Library/LaunchAgents/com.resy.booking.*.plist
+rm ~/Library/LaunchAgents/com.resy.booking.*.plist
+```
+
+## 🎯 How It Works
+
+1. **Fetches venue details** to verify restaurant exists
+2. **Polls for slots** at configured interval until timeout
+3. **Launches multiple threads** when slots are found
+4. **Each thread attempts booking** with exponential backoff retries
+5. **First successful thread wins** and stops all others
+6. **Logs everything** to file and console
+
+### Performance
+
+- **Latency**: ~100-200ms from slot availability to booking
+- **Concurrency**: 5 threads booking simultaneously
+- **Success Rate**: High due to multi-threaded approach
+
+## 🛠️ Development
+
+```bash
+# Build
+cargo build --release
+
+# Run tests
+cargo test
+
+# Check code
+cargo clippy
+
+# Format
+cargo fmt
+```
+
+## 📦 Project Structure
 
 ```
 resy-rust/
-├── Cargo.toml                # Dependencies and project metadata
-├── env.example               # Example environment variables
-├── README.md                 # This file
-├── QUICKSTART.md             # Quick start guide
-├── COMPETITIVE_MODE.md       # Competitive booking guide
-├── LOGGING.md                # Logging documentation
-├── DEPLOYMENT.md             # ⭐ Cloud VM deployment guide
-├── TROUBLESHOOTING.md        # Fix common issues
-├── QUICK_REFERENCE.md        # Command reference card
+├── src/
+│   ├── main.rs         # CLI entry point
+│   ├── api.rs          # Resy API client
+│   └── types.rs        # Data structures
 ├── scripts/
-│   ├── vm-setup.sh           # One-time VM setup
-│   ├── run.sh                # Run with defaults
-│   ├── schedule.sh           # Schedule bookings (at/cron)
-│   ├── check-schedule.sh     # View scheduled jobs & logs
-│   ├── test-connection.sh    # Test API & credentials
-│   └── examples.sh           # Usage examples
-└── src/
-    ├── main.rs               # CLI entry point, command handling, and logging
-    ├── api.rs                # Resy API client implementation
-    └── types.rs              # Data structures and models
+│   ├── schedule-macos.sh    # macOS scheduler
+│   ├── test-laptop.sh       # Quick test
+│   ├── run.sh              # Run with defaults
+│   └── examples.sh         # Usage examples
+├── Cargo.toml          # Dependencies
+└── .env               # Credentials (gitignored)
 ```
 
-## Dependencies
+## 🔐 Credentials
 
-- **clap** (4.5) - Modern CLI argument parsing with derive macros
-- **reqwest** (0.12) - High-performance async HTTP client
-- **tokio** (1.40) - Fast async runtime
-- **serde** (1.0) - Zero-copy serialization/deserialization
-- **dotenv** (0.15) - Environment variable management
-- **anyhow** (1.0) - Ergonomic error handling
-- **urlencoding** (2.1) - URL-safe string encoding
+Get your Resy credentials:
 
-## How It Works
+1. Log into resy.com in browser
+2. Open DevTools (F12) → Network tab
+3. Make any request to api.resy.com
+4. Find headers:
+   - `authorization`: Extract the api_key value
+   - `x-resy-auth-token`: Copy full token
 
-1. **Fetch Venue Details** - Gets restaurant information
-2. **Fetch Available Slots** - Retrieves all available reservations for the date
-3. **Filter Matching Slots** - Finds slots matching your time/type preferences
-4. **Get Booking Token** - Obtains a token for the selected slot
-5. **Book Reservation** - Completes the booking with payment info
+Add to `.env`:
+```
+RESY_API_KEY=your_api_key_here
+RESY_AUTH_TOKEN=your_token_here
+```
 
-## Finding Your Credentials
-
-1. Go to [resy.com](https://resy.com) and log in
-2. Open browser DevTools (F12)
-3. Go to the Network tab
-4. Make a reservation or search for restaurants
-5. Look for API calls to `api.resy.com`
-6. In the request headers, find:
-   - `authorization` header contains your API key
-   - `x-resy-auth-token` header contains your auth token
-
-## License
+## 📄 License
 
 MIT
 
+## 🤝 Contributing
+
+Contributions welcome! Please open an issue or PR.
+
+## ⚡ Tips
+
+- **Use dry-run** to test before real bookings
+- **Keep laptop awake** with `caffeinate` for scheduled bookings
+- **Check logs** in `~/.resy-rust/logs/` for debugging
+- **Multiple threads** increase success rate for competitive restaurants
+- **Adjust poll interval** based on how competitive the restaurant is
+
+## 🐛 Troubleshooting
+
+### "No venues found"
+- Check venue ID is correct
+- Date might be too far in the future
+
+### "Failed to fetch slots: 500"
+- Resy API issue or rate limiting
+- Try different time or wait a few minutes
+
+### Scheduled job didn't run
+- Check laptop wasn't asleep: `caffeinate -u -t 86400 &`
+- Verify job loaded: `launchctl list | grep resy`
+- Check logs: `cat logs/launchd-error.log`
+
+### Authentication errors
+- Verify credentials in `.env`
+- Auth token might have expired (get new one from browser)
+- No quotes needed around values in `.env`

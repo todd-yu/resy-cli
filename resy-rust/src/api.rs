@@ -49,13 +49,8 @@ impl ResyClient {
 
     fn auth_headers(&self) -> header::HeaderMap {
         let mut headers = header::HeaderMap::new();
-        
-        // Trim any whitespace or quotes from credentials
         let api_key = self.api_key.trim().trim_matches('"').trim_matches('\'');
         let auth_token = self.auth_token.trim().trim_matches('"').trim_matches('\'');
-        
-        eprintln!("DEBUG: Building headers with API key: {}...", &api_key.chars().take(20).collect::<String>());
-        eprintln!("DEBUG: Building headers with auth token: {}...", &auth_token.chars().take(20).collect::<String>());
         
         headers.insert(
             "authorization",
@@ -68,27 +63,17 @@ impl ResyClient {
 
     pub async fn fetch_venue_details(&self, venue_id: &str) -> Result<VenueResponse> {
         let url = format!("https://api.resy.com/2/config?venue_id={}", venue_id);
-        
-        eprintln!("DEBUG: Fetching venue details from: {}", url);
-        eprintln!("DEBUG: API Key (first 20 chars): {}...", &self.api_key.chars().take(20).collect::<String>());
-        eprintln!("DEBUG: Auth Token (first 20 chars): {}...", &self.auth_token.chars().take(20).collect::<String>());
-        
         let response = self.client
             .get(&url)
             .headers(self.auth_headers())
             .send()
             .await
             .context("Failed to fetch venue details")?;
-
-        let status = response.status();
-        eprintln!("DEBUG: Response status: {}", status);
         
-        if !status.is_success() {
-            let body = response.text().await.unwrap_or_else(|_| "Could not read response body".to_string());
-            eprintln!("DEBUG: Error response body: {}", body);
-            anyhow::bail!("Failed to fetch venue details: {} - Body: {}", status, body);
+        if !response.status().is_success() {
+            anyhow::bail!("Failed to fetch venue details: {}", response.status());
         }
-
+        
         response.json().await.context("Failed to parse venue response")
     }
 
@@ -102,9 +87,7 @@ impl ResyClient {
             "https://api.resy.com/4/find?party_size={}&venue_id={}&day={}&lat=0&long=0",
             party_size, venue_id, day
         );
-
-        eprintln!("DEBUG: Fetching slots from: {}", url);
-
+        
         let response = self.client
             .get(&url)
             .headers(self.auth_headers())
@@ -112,26 +95,8 @@ impl ResyClient {
             .await
             .context("Failed to fetch slots")?;
 
-        let status = response.status();
-        eprintln!("DEBUG: Slots response status: {}", status);
-
-        if !status.is_success() {
-            let body = response.text().await.unwrap_or_else(|_| "Could not read response body".to_string());
-            eprintln!("DEBUG: Error response body: {}", body);
-            eprintln!("DEBUG: Raw credential values:");
-            eprintln!("  API Key raw: '{}'", self.api_key);
-            eprintln!("  API Key len: {}", self.api_key.len());
-            eprintln!("  Auth Token raw (first 50): '{}'", self.auth_token.chars().take(50).collect::<String>());
-            eprintln!("  Auth Token len: {}", self.auth_token.len());
-            eprintln!("  Auth Token bytes (first 20): {:?}", self.auth_token.as_bytes().iter().take(20).collect::<Vec<_>>());
-            
-            eprintln!("DEBUG: After trimming:");
-            let api_key_trimmed = self.api_key.trim().trim_matches('"').trim_matches('\'');
-            let auth_token_trimmed = self.auth_token.trim().trim_matches('"').trim_matches('\'');
-            eprintln!("  API Key trimmed: '{}'", api_key_trimmed);
-            eprintln!("  Auth Token trimmed (first 50): '{}'", auth_token_trimmed.chars().take(50).collect::<String>());
-            
-            anyhow::bail!("Failed to fetch slots: {} - Body: {}", status, body);
+        if !response.status().is_success() {
+            anyhow::bail!("Failed to fetch slots: {}", response.status());
         }
 
         let find_response: FindResponse = response.json().await.context("Failed to parse slots response")?;
@@ -156,8 +121,6 @@ impl ResyClient {
             party_size,
         };
 
-        eprintln!("DEBUG: Getting booking token from: {}", url);
-
         let response = self.client
             .post(url)
             .headers(self.auth_headers())
@@ -166,13 +129,8 @@ impl ResyClient {
             .await
             .context("Failed to get booking token")?;
 
-        let status = response.status();
-        eprintln!("DEBUG: Booking token response status: {}", status);
-
-        if !status.is_success() {
-            let body = response.text().await.unwrap_or_else(|_| "Could not read response body".to_string());
-            eprintln!("DEBUG: Error response body: {}", body);
-            anyhow::bail!("Failed to get booking token: {} - Body: {}", status, body);
+        if !response.status().is_success() {
+            anyhow::bail!("Failed to get booking token: {}", response.status());
         }
 
         response.json().await.context("Failed to parse booking details")
@@ -180,15 +138,12 @@ impl ResyClient {
 
     pub async fn book_reservation(&self, book_token: &str, payment_id: Option<u64>) -> Result<()> {
         let url = "https://api.resy.com/3/book";
-        
         let mut form_data = format!("book_token={}", encode(book_token));
         
         if let Some(id) = payment_id {
             let payment_json = json!({"id": id}).to_string();
             form_data.push_str(&format!("&struct_payment_method={}", encode(&payment_json)));
         }
-
-        eprintln!("DEBUG: Booking reservation at: {}", url);
 
         let response = self.client
             .post(url)
@@ -199,71 +154,13 @@ impl ResyClient {
             .await
             .context("Failed to book reservation")?;
 
-        let status = response.status();
-        eprintln!("DEBUG: Book response status: {}", status);
-
-        if !status.is_success() {
-            let body = response.text().await.unwrap_or_else(|_| "Could not read response body".to_string());
-            eprintln!("DEBUG: Error response body: {}", body);
-            anyhow::bail!("Failed to book reservation: {} - Body: {}", status, body);
+        if !response.status().is_success() {
+            anyhow::bail!("Failed to book reservation: {}", response.status());
         }
 
         Ok(())
     }
 
-    pub async fn book(
-        &self,
-        venue_id: &str,
-        party_size: u32,
-        day: &str,
-        times: &[String],
-        types: &[String],
-        dry_run: bool,
-    ) -> Result<()> {
-        println!("📍 Fetching venue details...");
-        let venue = self.fetch_venue_details(venue_id).await?;
-        println!("🍽️  Restaurant: {}", venue.venue.name);
-
-        println!("\n🔍 Fetching available slots...");
-        let slots = self.fetch_slots(venue_id, party_size, day).await?;
-        println!("✅ Found {} available slots", slots.len());
-
-        let matching_slots: Vec<_> = slots.iter()
-            .filter(|slot| slot.matches(times, types))
-            .collect();
-
-        if matching_slots.is_empty() {
-            anyhow::bail!("❌ No matching slots found for the specified times/types");
-        }
-
-        println!("🎯 Found {} matching slots:", matching_slots.len());
-        for slot in &matching_slots {
-            println!("   - {} ({})", slot.date.start, slot.config.slot_type);
-        }
-
-        if dry_run {
-            println!("\n🏃 Dry run mode - skipping actual booking");
-            return Ok(());
-        }
-
-        println!("\n📝 Attempting to book...");
-        for slot in matching_slots {
-            println!("   Trying slot: {} ({})", slot.date.start, slot.config.slot_type);
-            
-            match self.try_book_slot(slot, day, party_size).await {
-                Ok(_) => {
-                    println!("🎉 Successfully booked reservation!");
-                    return Ok(());
-                }
-                Err(e) => {
-                    println!("   ⚠️  Failed: {}", e);
-                    continue;
-                }
-            }
-        }
-
-        anyhow::bail!("❌ Could not book any matching slots")
-    }
 
     async fn try_book_slot(&self, slot: &Slot, day: &str, party_size: u32) -> Result<()> {
         let details = self.get_booking_token(&slot.config.token, day, party_size).await?;
