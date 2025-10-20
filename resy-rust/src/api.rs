@@ -48,12 +48,20 @@ impl ResyClient {
 
     fn auth_headers(&self) -> header::HeaderMap {
         let mut headers = header::HeaderMap::new();
+        
+        // Trim any whitespace or quotes from credentials
+        let api_key = self.api_key.trim().trim_matches('"').trim_matches('\'');
+        let auth_token = self.auth_token.trim().trim_matches('"').trim_matches('\'');
+        
+        eprintln!("DEBUG: Building headers with API key: {}...", &api_key.chars().take(20).collect::<String>());
+        eprintln!("DEBUG: Building headers with auth token: {}...", &auth_token.chars().take(20).collect::<String>());
+        
         headers.insert(
             "authorization",
-            format!(r#"ResyAPI api_key="{}""#, self.api_key).parse().unwrap(),
+            format!(r#"ResyAPI api_key="{}""#, api_key).parse().unwrap(),
         );
-        headers.insert("x-resy-auth-token", self.auth_token.parse().unwrap());
-        headers.insert("x-resy-universal-auth", self.auth_token.parse().unwrap());
+        headers.insert("x-resy-auth-token", auth_token.parse().unwrap());
+        headers.insert("x-resy-universal-auth", auth_token.parse().unwrap());
         headers
     }
 
